@@ -1,0 +1,339 @@
+openapi: 3.0.3
+info:
+  title: Kampus Map - Public API
+  description: |
+    Contract publik untuk client (Flutter mobile, web). Format: JSON.
+    Service-to-service internal MENGGUNAKAN gRPC/Protobuf — lihat api/proto/.
+  version: 1.0.0
+  contact:
+    name: Kampus Map Team
+
+servers:
+  - url: http://localhost:8080/api
+    description: API Gateway (development)
+
+tags:
+  - name: Auth
+  - name: Places
+  - name: Categories
+  - name: Reviews
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register user baru
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterRequest" }
+      responses:
+        "201":
+          description: Berhasil
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthEnvelope" }
+        "409": { $ref: "#/components/responses/EmailTaken" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: Berhasil
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthEnvelope" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /places:
+    get:
+      tags: [Places]
+      summary: List places (dengan filter)
+      parameters:
+        - { in: query, name: category_id, schema: { type: string } }
+        - { in: query, name: search,      schema: { type: string } }
+        - { in: query, name: limit,       schema: { type: integer, default: 50 } }
+        - { in: query, name: skip,        schema: { type: integer, default: 0 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaceListEnvelope" }
+    post:
+      tags: [Places]
+      summary: Tambah place baru (admin)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePlaceRequest" }
+      responses:
+        "201":
+          description: Berhasil
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaceEnvelope" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /places/nearby:
+    get:
+      tags: [Places]
+      summary: Cari tempat di sekitar koordinat (geospatial)
+      parameters:
+        - { in: query, name: lat,    required: true,  schema: { type: number, format: double } }
+        - { in: query, name: lng,    required: true,  schema: { type: number, format: double } }
+        - { in: query, name: radius, schema: { type: number, format: double, default: 1000, description: "Meter" } }
+        - { in: query, name: limit,  schema: { type: integer, default: 20 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaceListEnvelope" }
+
+  /places/{id}:
+    get:
+      tags: [Places]
+      summary: Detail place
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaceEnvelope" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /categories:
+    get:
+      tags: [Categories]
+      summary: List semua kategori
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CategoryListEnvelope" }
+
+  /reviews:
+    post:
+      tags: [Reviews]
+      summary: Tambah review
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateReviewRequest" }
+      responses:
+        "201":
+          description: Berhasil
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReviewEnvelope" }
+        "404":
+          description: place_id tidak ditemukan (validated via internal gRPC ke places-service)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /reviews/place/{placeID}:
+    get:
+      tags: [Reviews]
+      summary: List review untuk satu place
+      parameters:
+        - { in: path, name: placeID, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReviewListEnvelope" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # ===== Envelope (selalu konsisten) =====
+    BaseEnvelope:
+      type: object
+      properties:
+        success: { type: boolean }
+        message: { type: string }
+        error:   { $ref: "#/components/schemas/ApiError" }
+
+    ApiError:
+      type: object
+      properties:
+        code:    { type: string, example: "BAD_REQUEST" }
+        message: { type: string }
+
+    # ===== Auth =====
+    RegisterRequest:
+      type: object
+      required: [email, password, name]
+      properties:
+        email:    { type: string, format: email }
+        password: { type: string, minLength: 6 }
+        name:     { type: string }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:    { type: string, format: email }
+        password: { type: string }
+
+    User:
+      type: object
+      properties:
+        id:    { type: string }
+        email: { type: string }
+        name:  { type: string }
+        role:  { type: string, enum: [user, admin] }
+
+    AuthSession:
+      type: object
+      properties:
+        token: { type: string, description: "JWT" }
+        user:  { $ref: "#/components/schemas/User" }
+
+    AuthEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/BaseEnvelope"
+        - type: object
+          properties:
+            data: { $ref: "#/components/schemas/AuthSession" }
+
+    # ===== Places =====
+    Place:
+      type: object
+      properties:
+        id:          { type: string }
+        category_id: { type: string }
+        name:        { type: string }
+        latitude:    { type: number, format: double }
+        longitude:   { type: number, format: double }
+        address:     { type: string }
+        description: { type: string }
+
+    CreatePlaceRequest:
+      type: object
+      required: [category_id, name, latitude, longitude]
+      properties:
+        category_id: { type: string }
+        name:        { type: string }
+        latitude:    { type: number, format: double }
+        longitude:   { type: number, format: double }
+        address:     { type: string }
+        description: { type: string }
+
+    PlaceEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/BaseEnvelope"
+        - type: object
+          properties:
+            data: { $ref: "#/components/schemas/Place" }
+
+    PlaceListEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/BaseEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: "#/components/schemas/Place" }
+
+    # ===== Categories =====
+    Category:
+      type: object
+      properties:
+        id:   { type: string }
+        name: { type: string }
+        icon: { type: string }
+
+    CategoryListEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/BaseEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: "#/components/schemas/Category" }
+
+    # ===== Reviews =====
+    Review:
+      type: object
+      properties:
+        id:       { type: string }
+        place_id: { type: string }
+        user_id:  { type: string }
+        rating:   { type: integer, minimum: 1, maximum: 5 }
+        comment:  { type: string }
+
+    CreateReviewRequest:
+      type: object
+      required: [place_id, user_id, rating]
+      properties:
+        place_id: { type: string }
+        user_id:  { type: string }
+        rating:   { type: integer, minimum: 1, maximum: 5 }
+        comment:  { type: string }
+
+    ReviewEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/BaseEnvelope"
+        - type: object
+          properties:
+            data: { $ref: "#/components/schemas/Review" }
+
+    ReviewListEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/BaseEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: "#/components/schemas/Review" }
+
+    ErrorEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/BaseEnvelope"
+
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Unauthorized:
+      description: Token missing / invalid / credentials wrong
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    NotFound:
+      description: Resource tidak ditemukan
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    EmailTaken:
+      description: Email sudah terdaftar
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }

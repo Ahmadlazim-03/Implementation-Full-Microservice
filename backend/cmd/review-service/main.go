@@ -8,6 +8,7 @@ import (
 
 	reviewCmd "backend/internal/review/application/command"
 	reviewQuery "backend/internal/review/application/query"
+	reviewGrpc "backend/internal/review/infrastructure/grpc"
 	reviewPersistence "backend/internal/review/infrastructure/persistence"
 	reviewHTTP "backend/internal/review/interfaces/http"
 	reviewHandler "backend/internal/review/interfaces/http/handler"
@@ -16,8 +17,8 @@ import (
 	"backend/pkg/middleware"
 )
 
-// review-service — backed by MongoDB.
-// Rationale: append-mostly writes, document model fits rating+comment naturally.
+// review-service — MongoDB untuk reviews.
+// Komunikasi ke places-service via gRPC (internal protobuf) untuk validasi place_id.
 func main() {
 	cfg := config.Load()
 
@@ -30,9 +31,17 @@ func main() {
 
 	db := mongoClient.Database(cfg.MongoDBReview)
 
+	// gRPC client ke places-service — Anti-Corruption Layer.
+	verifier, err := reviewGrpc.NewGrpcPlaceVerifier(cfg.PlacesGrpcAddr)
+	if err != nil {
+		log.Fatalf("grpc place verifier: %v", err)
+	}
+	defer verifier.Close()
+	log.Printf("review-service connected to places gRPC at %s", cfg.PlacesGrpcAddr)
+
 	reviewRepo := reviewPersistence.NewMongoReviewRepository(db)
 
-	createUC := reviewCmd.NewCreateReviewHandler(reviewRepo)
+	createUC := reviewCmd.NewCreateReviewHandler(reviewRepo, verifier)
 	listUC := reviewQuery.NewListReviewsByPlaceHandler(reviewRepo)
 
 	h := reviewHandler.NewReviewHandler(createUC, listUC)
@@ -45,7 +54,7 @@ func main() {
 	reviewHTTP.RegisterRoutes(r, h)
 
 	addr := ":" + cfg.ReviewServicePort
-	log.Printf("review-service (mongo) listening on %s", addr)
+	log.Printf("review-service HTTP listening on %s", addr)
 	if err := r.Run(addr); err != nil {
 		log.Fatal(err)
 	}

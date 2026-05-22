@@ -32,16 +32,24 @@ type Config struct {
 	JWTSecret       string
 	JWTExpiresHours int
 
-	// Service Ports
+	// Service Ports (HTTP — public REST/JSON)
 	GatewayPort       string
 	AuthServicePort   string
 	PlacesServicePort string
 	ReviewServicePort string
 
-	// Gateway -> backend service URLs
+	// gRPC ports — INTERNAL only, gunakan protobuf untuk performa
+	PlacesGrpcPort string
+	AuthGrpcPort   string
+
+	// Gateway -> backend service URLs (HTTP)
 	AuthServiceURL   string
 	PlacesServiceURL string
 	ReviewServiceURL string
+
+	// Service-to-service gRPC targets (host:port)
+	PlacesGrpcAddr string
+	AuthGrpcAddr   string
 }
 
 func Load() *Config {
@@ -72,6 +80,11 @@ func Load() *Config {
 		AuthServiceURL:   getEnv("AUTH_SERVICE_URL", "http://localhost:8081"),
 		PlacesServiceURL: getEnv("PLACES_SERVICE_URL", "http://localhost:8082"),
 		ReviewServiceURL: getEnv("REVIEW_SERVICE_URL", "http://localhost:8083"),
+
+		PlacesGrpcPort: getEnv("PLACES_GRPC_PORT", "9082"),
+		AuthGrpcPort:   getEnv("AUTH_GRPC_PORT", "9081"),
+		PlacesGrpcAddr: getEnv("PLACES_GRPC_ADDR", "localhost:9082"),
+		AuthGrpcAddr:   getEnv("AUTH_GRPC_ADDR", "localhost:9081"),
 	}
 }
 

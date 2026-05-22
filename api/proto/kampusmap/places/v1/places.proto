@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package kampusmap.places.v1;
+
+option go_package = "backend/gen/proto/kampusmap/places/v1;placesv1";
+
+// PlacesService — INTERNAL gRPC contract.
+// Dipanggil dari microservice lain (e.g. review-service untuk validasi place_id).
+// JANGAN ekspose ke public client — public pakai REST/JSON di api/openapi/.
+service PlacesService {
+  // GetPlace — ambil detail satu place.
+  rpc GetPlace(GetPlaceRequest) returns (GetPlaceResponse);
+
+  // PlaceExists — check ringan apakah place_id valid.
+  // Lebih cepat dari GetPlace karena tidak transfer semua field.
+  rpc PlaceExists(PlaceExistsRequest) returns (PlaceExistsResponse);
+}
+
+message Place {
+  string id = 1;
+  string category_id = 2;
+  string name = 3;
+  double latitude = 4;
+  double longitude = 5;
+  string address = 6;
+  string description = 7;
+}
+
+message GetPlaceRequest {
+  string id = 1;
+}
+
+message GetPlaceResponse {
+  Place place = 1;
+}
+
+message PlaceExistsRequest {
+  string id = 1;
+}
+
+message PlaceExistsResponse {
+  bool exists = 1;
+}

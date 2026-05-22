@@ -1,16 +1,19 @@
 package handler
 
 import (
+	"errors"
+
 	"github.com/gin-gonic/gin"
 
 	"backend/internal/review/application/command"
 	"backend/internal/review/application/query"
 	"backend/internal/review/interfaces/http/dto"
+	shareddomain "backend/internal/shared/domain"
 	"backend/pkg/response"
 )
 
 type ReviewHandler struct {
-	create     *command.CreateReviewHandler
+	create      *command.CreateReviewHandler
 	listByPlace *query.ListReviewsByPlaceHandler
 }
 
@@ -29,6 +32,10 @@ func (h *ReviewHandler) Create(c *gin.Context) {
 		Rating: req.Rating, Comment: req.Comment,
 	})
 	if err != nil {
+		if errors.Is(err, shareddomain.ErrNotFound) {
+			response.NotFound(c, "place_id not found")
+			return
+		}
 		response.BadRequest(c, err.Error())
 		return
 	}
