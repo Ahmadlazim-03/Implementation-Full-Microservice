@@ -1,0 +1,78 @@
+version: "3.9"
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: kampusmap-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: build/Dockerfile
+      args:
+        SERVICE: auth-service
+    container_name: kampusmap-auth
+    env_file: .env
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+    ports:
+      - "8081:8081"
+    depends_on:
+      - mongo
+
+  places-service:
+    build:
+      context: .
+      dockerfile: build/Dockerfile
+      args:
+        SERVICE: places-service
+    container_name: kampusmap-places
+    env_file: .env
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+    ports:
+      - "8082:8082"
+    depends_on:
+      - mongo
+
+  review-service:
+    build:
+      context: .
+      dockerfile: build/Dockerfile
+      args:
+        SERVICE: review-service
+    container_name: kampusmap-review
+    env_file: .env
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+    ports:
+      - "8083:8083"
+    depends_on:
+      - mongo
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: build/Dockerfile
+      args:
+        SERVICE: api-gateway
+    container_name: kampusmap-gateway
+    env_file: .env
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8081
+      PLACES_SERVICE_URL: http://places-service:8082
+      REVIEW_SERVICE_URL: http://review-service:8083
+    ports:
+      - "8080:8080"
+    depends_on:
+      - auth-service
+      - places-service
+      - review-service
+
+volumes:
+  mongo_data:
