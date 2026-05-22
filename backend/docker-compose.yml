@@ -1,15 +1,62 @@
 version: "3.9"
 
+# ============================================================================
+# Database per Service + Polyglot Persistence
+# ----------------------------------------------------------------------------
+# auth-service     -> PostgreSQL (ACID, unique email constraint, strong consistency)
+# places-service   -> MongoDB    (geospatial via 2dsphere, flexible schema)
+# review-service   -> MongoDB    (append-mostly, document model fit)
+# (shared)         -> Redis      (cache decorator, session blacklist, rate limit)
+#
+# Each DB volume is isolated -> services are independent and scalable.
+# ============================================================================
+
 services:
-  mongo:
+  # ---------- Auth Service DB ----------
+  postgres-auth:
+    image: postgres:16-alpine
+    container_name: kampusmap-postgres-auth
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: auth_user
+      POSTGRES_PASSWORD: auth_pass
+      POSTGRES_DB: kampusmap_auth
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_auth_data:/var/lib/postgresql/data
+
+  # ---------- Places Service DB ----------
+  mongo-places:
     image: mongo:7
-    container_name: kampusmap-mongo
+    container_name: kampusmap-mongo-places
     restart: unless-stopped
     ports:
-      - "27017:27017"
+      - "27018:27017"
     volumes:
-      - mongo_data:/data/db
+      - mongo_places_data:/data/db
 
+  # ---------- Review Service DB ----------
+  mongo-review:
+    image: mongo:7
+    container_name: kampusmap-mongo-review
+    restart: unless-stopped
+    ports:
+      - "27019:27017"
+    volumes:
+      - mongo_review_data:/data/db
+
+  # ---------- Cache (shared) ----------
+  redis:
+    image: redis:7-alpine
+    container_name: kampusmap-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # ---------- Microservices ----------
   auth-service:
     build:
       context: .
@@ -19,11 +66,13 @@ services:
     container_name: kampusmap-auth
     env_file: .env
     environment:
-      MONGO_URI: mongodb://mongo:27017
+      POSTGRES_AUTH_DSN: postgres://auth_user:auth_pass@postgres-auth:5432/kampusmap_auth?sslmode=disable
+      REDIS_ADDR: redis:6379
     ports:
       - "8081:8081"
     depends_on:
-      - mongo
+      - postgres-auth
+      - redis
 
   places-service:
     build:
@@ -34,11 +83,13 @@ services:
     container_name: kampusmap-places
     env_file: .env
     environment:
-      MONGO_URI: mongodb://mongo:27017
+      MONGO_PLACES_URI: mongodb://mongo-places:27017
+      REDIS_ADDR: redis:6379
     ports:
       - "8082:8082"
     depends_on:
-      - mongo
+      - mongo-places
+      - redis
 
   review-service:
     build:
@@ -49,11 +100,11 @@ services:
     container_name: kampusmap-review
     env_file: .env
     environment:
-      MONGO_URI: mongodb://mongo:27017
+      MONGO_REVIEW_URI: mongodb://mongo-review:27017
     ports:
       - "8083:8083"
     depends_on:
-      - mongo
+      - mongo-review
 
   api-gateway:
     build:
@@ -75,4 +126,7 @@ services:
       - review-service
 
 volumes:
-  mongo_data:
+  postgres_auth_data:
+  mongo_places_data:
+  mongo_review_data:
+  redis_data:

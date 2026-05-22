@@ -16,23 +16,24 @@ import (
 	"backend/pkg/middleware"
 )
 
+// auth-service — backed by PostgreSQL (polyglot persistence).
+// Rationale: ACID + unique constraints + strong consistency for credentials.
 func main() {
 	cfg := config.Load()
 
 	ctx := context.Background()
-	mongoClient, err := database.NewMongoClient(ctx, cfg.MongoURI)
+	pool, err := database.NewPostgresPool(ctx, cfg.PostgresAuthDSN)
 	if err != nil {
-		log.Fatalf("mongo connect: %v", err)
+		log.Fatalf("postgres connect: %v", err)
 	}
-	defer mongoClient.Disconnect(ctx)
+	defer pool.Close()
 
-	db := mongoClient.Database(cfg.MongoDBAuth)
-
-	// Wire dependencies (Composition Root).
-	userRepo, err := authPersistence.NewMongoUserRepository(db)
-	if err != nil {
-		log.Fatalf("init user repo: %v", err)
+	if err := authPersistence.Migrate(ctx, pool); err != nil {
+		log.Fatalf("migrate: %v", err)
 	}
+
+	// Composition root — wire dependencies in one place.
+	userRepo := authPersistence.NewPostgresUserRepository(pool)
 	hasher := authSecurity.NewBcryptHasher()
 	tokens := authSecurity.NewJWTService(cfg.JWTSecret, cfg.JWTExpiresHours)
 
@@ -43,11 +44,13 @@ func main() {
 
 	r := gin.Default()
 	r.Use(middleware.CORS())
-	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"service": "auth", "status": "ok"}) })
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"service": "auth", "db": "postgres", "status": "ok"})
+	})
 	authHTTP.RegisterRoutes(r, h)
 
 	addr := ":" + cfg.AuthServicePort
-	log.Printf("auth-service listening on %s", addr)
+	log.Printf("auth-service (postgres) listening on %s", addr)
 	if err := r.Run(addr); err != nil {
 		log.Fatal(err)
 	}

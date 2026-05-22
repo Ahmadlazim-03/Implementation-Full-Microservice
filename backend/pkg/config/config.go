@@ -5,23 +5,40 @@ import (
 	"strconv"
 )
 
+// Config carries all configuration. Each service uses ONLY the fields
+// relevant to its own bounded context — this is intentional per
+// Database-per-Service: a service must never read another service's DSN.
 type Config struct {
 	AppEnv   string
 	LogLevel string
 
-	MongoURI       string
-	MongoDBAuth    string
+	// Auth Service (PostgreSQL)
+	PostgresAuthDSN string
+
+	// Places Service (MongoDB)
+	MongoPlacesURI string
 	MongoDBPlaces  string
+
+	// Review Service (MongoDB)
+	MongoReviewURI string
 	MongoDBReview  string
 
+	// Redis (shared cache)
+	RedisAddr     string
+	RedisPassword string
+	RedisDB       int
+
+	// JWT
 	JWTSecret       string
 	JWTExpiresHours int
 
+	// Service Ports
 	GatewayPort       string
 	AuthServicePort   string
 	PlacesServicePort string
 	ReviewServicePort string
 
+	// Gateway -> backend service URLs
 	AuthServiceURL   string
 	PlacesServiceURL string
 	ReviewServiceURL string
@@ -32,10 +49,17 @@ func Load() *Config {
 		AppEnv:   getEnv("APP_ENV", "development"),
 		LogLevel: getEnv("LOG_LEVEL", "info"),
 
-		MongoURI:      getEnv("MONGO_URI", "mongodb://localhost:27017"),
-		MongoDBAuth:   getEnv("MONGO_DB_AUTH", "kampusmap_auth"),
-		MongoDBPlaces: getEnv("MONGO_DB_PLACES", "kampusmap_places"),
-		MongoDBReview: getEnv("MONGO_DB_REVIEW", "kampusmap_review"),
+		PostgresAuthDSN: getEnv("POSTGRES_AUTH_DSN", "postgres://auth_user:auth_pass@localhost:5433/kampusmap_auth?sslmode=disable"),
+
+		MongoPlacesURI: getEnv("MONGO_PLACES_URI", "mongodb://localhost:27018"),
+		MongoDBPlaces:  getEnv("MONGO_DB_PLACES", "kampusmap_places"),
+
+		MongoReviewURI: getEnv("MONGO_REVIEW_URI", "mongodb://localhost:27019"),
+		MongoDBReview:  getEnv("MONGO_DB_REVIEW", "kampusmap_review"),
+
+		RedisAddr:     getEnv("REDIS_ADDR", "localhost:6379"),
+		RedisPassword: getEnv("REDIS_PASSWORD", ""),
+		RedisDB:       getEnvInt("REDIS_DB", 0),
 
 		JWTSecret:       getEnv("JWT_SECRET", "dev-secret"),
 		JWTExpiresHours: getEnvInt("JWT_EXPIRES_HOURS", 72),

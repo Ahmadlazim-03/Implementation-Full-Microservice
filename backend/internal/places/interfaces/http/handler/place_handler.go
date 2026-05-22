@@ -14,10 +14,15 @@ import (
 type PlaceHandler struct {
 	create *command.CreatePlaceHandler
 	list   *query.ListPlacesHandler
+	nearby *query.FindNearbyPlacesHandler
 }
 
-func NewPlaceHandler(create *command.CreatePlaceHandler, list *query.ListPlacesHandler) *PlaceHandler {
-	return &PlaceHandler{create: create, list: list}
+func NewPlaceHandler(
+	create *command.CreatePlaceHandler,
+	list *query.ListPlacesHandler,
+	nearby *query.FindNearbyPlacesHandler,
+) *PlaceHandler {
+	return &PlaceHandler{create: create, list: list, nearby: nearby}
 }
 
 func (h *PlaceHandler) Create(c *gin.Context) {
@@ -49,6 +54,33 @@ func (h *PlaceHandler) List(c *gin.Context) {
 	})
 	if err != nil {
 		response.Internal(c, err.Error())
+		return
+	}
+	response.OK(c, out)
+}
+
+// Nearby — uses MongoDB geospatial query.
+// GET /api/places/nearby?lat=-7.95&lng=112.61&radius=1500&limit=20
+func (h *PlaceHandler) Nearby(c *gin.Context) {
+	lat, err := strconv.ParseFloat(c.Query("lat"), 64)
+	if err != nil {
+		response.BadRequest(c, "lat is required")
+		return
+	}
+	lng, err := strconv.ParseFloat(c.Query("lng"), 64)
+	if err != nil {
+		response.BadRequest(c, "lng is required")
+		return
+	}
+	radius, _ := strconv.ParseFloat(c.DefaultQuery("radius", "1000"), 64)
+	limit, _ := strconv.ParseInt(c.DefaultQuery("limit", "20"), 10, 64)
+
+	out, err := h.nearby.Handle(c.Request.Context(), query.FindNearbyPlacesInput{
+		Latitude: lat, Longitude: lng,
+		RadiusMeters: radius, Limit: limit,
+	})
+	if err != nil {
+		response.BadRequest(c, err.Error())
 		return
 	}
 	response.OK(c, out)

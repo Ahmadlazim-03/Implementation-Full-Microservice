@@ -16,11 +16,13 @@ import (
 	"backend/pkg/middleware"
 )
 
+// review-service — backed by MongoDB.
+// Rationale: append-mostly writes, document model fits rating+comment naturally.
 func main() {
 	cfg := config.Load()
 
 	ctx := context.Background()
-	mongoClient, err := database.NewMongoClient(ctx, cfg.MongoURI)
+	mongoClient, err := database.NewMongoClient(ctx, cfg.MongoReviewURI)
 	if err != nil {
 		log.Fatalf("mongo connect: %v", err)
 	}
@@ -37,11 +39,13 @@ func main() {
 
 	r := gin.Default()
 	r.Use(middleware.CORS())
-	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"service": "review", "status": "ok"}) })
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"service": "review", "db": "mongodb", "status": "ok"})
+	})
 	reviewHTTP.RegisterRoutes(r, h)
 
 	addr := ":" + cfg.ReviewServicePort
-	log.Printf("review-service listening on %s", addr)
+	log.Printf("review-service (mongo) listening on %s", addr)
 	if err := r.Run(addr); err != nil {
 		log.Fatal(err)
 	}
